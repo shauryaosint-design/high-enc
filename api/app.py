@@ -16,7 +16,7 @@ from functools import wraps
 app = Flask(__name__)
 
 # ========== Environment Variables ==========
-ENCODER_SECRET = shibu123
+ENCODER_SECRET = "shibu123"
 ADMIN_KEY = shibu1234
 # Simple in-memory storage (Render free tier pe restart hone pe data urrega)
 # Production mein PostgreSQL / Redis use karna better hai
