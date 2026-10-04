@@ -1,26 +1,26 @@
 """
-Render pe deploy karne wali API
--------------------------------
-Environment Variables (Render Dashboard se set karo):
-
-ENCODER_SECRET = shibu123
-ADMIN_KEY      = koi_strong_admin_key_rakho
+Render API - Strong Version
+Encrypted code yahan store hota hai.
+Password sahi hone par hi code return hota hai.
 """
 
 from flask import Flask, request, jsonify
 import os
 import hashlib
 import time
-from functools import wraps
+import base64
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 app = Flask(__name__)
 
 # ========== Environment Variables ==========
-ENCODER_SECRET = "shibu123"
-ADMIN_KEY = "shibu1234"
-# Simple in-memory storage (Render free tier pe restart hone pe data urrega)
-# Production mein PostgreSQL / Redis use karna better hai
-# Format: { file_id: { "password_hash": "...", "original_name": "...", "created_at": 123 } }
+ENCODER_SECRET = "shaurya"
+ADMIN_KEY = "shibu"
+
+# In-memory DB (Render restart pe data urrega - free tier limitation)
+# Format: { file_id: {password_hash, salt, encrypted, original_name, created_at, runs} }
 FILES_DB = {}
 
 
@@ -28,29 +28,40 @@ def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 
+def derive_key(password: str, salt: bytes) -> bytes:
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=480000,
+    )
+    return base64.urlsafe_b64encode(kdf.derive(password.encode()))
+
+
 @app.route("/")
 def home():
     return jsonify({
         "status": "online",
-        "service": "Python File Protector API",
-        "endpoints": ["/register", "/verify", "/stats"]
+        "service": "Strong Python Protector API",
+        "version": "2.0"
     })
 
 
 @app.route("/register", methods=["POST"])
 def register():
-    """Encoder se naya file register hota hai"""
+    """Encoder se naya file + encrypted code register hota hai"""
     data = request.json or {}
 
-    secret = data.get("secret")
-    file_id = data.get("file_id")
-    password = data.get("password")
-    original_name = data.get("original_name", "unknown.py")
-
-    if secret != ENCODER_SECRET:
+    if data.get("secret") != ENCODER_SECRET:
         return jsonify({"success": False, "error": "Invalid encoder secret"}), 403
 
-    if not file_id or not password:
+    file_id = data.get("file_id")
+    password = data.get("password")
+    salt_b64 = data.get("salt")
+    encrypted = data.get("encrypted")
+    original_name = data.get("original_name", "unknown.py")
+
+    if not all([file_id, password, salt_b64, encrypted]):
         return jsonify({"success": False, "error": "Missing fields"}), 400
 
     if file_id in FILES_DB:
@@ -58,6 +69,8 @@ def register():
 
     FILES_DB[file_id] = {
         "password_hash": hash_password(password),
+        "salt": salt_b64,
+        "encrypted": encrypted,
         "original_name": original_name,
         "created_at": int(time.time()),
         "runs": 0
@@ -65,14 +78,14 @@ def register():
 
     return jsonify({
         "success": True,
-        "message": "File registered successfully",
+        "message": "File registered",
         "file_id": file_id
     })
 
 
-@app.route("/verify", methods=["POST"])
-def verify():
-    """Protected file se password verify hota hai"""
+@app.route("/run", methods=["POST"])
+def run_file():
+    """Password verify karke decrypted code return karta hai"""
     data = request.json or {}
 
     file_id = data.get("file_id")
@@ -88,17 +101,25 @@ def verify():
     if record["password_hash"] != hash_password(password):
         return jsonify({"success": False, "error": "Wrong password"}), 401
 
-    # Success
+    # Password sahi hai → decrypt karke code bhejo
+    try:
+        salt = base64.b64decode(record["salt"])
+        key = derive_key(password, salt)
+        f = Fernet(key)
+        code = f.decrypt(record["encrypted"].encode()).decode()
+    except Exception:
+        return jsonify({"success": False, "error": "Decryption failed"}), 500
+
     record["runs"] += 1
+
     return jsonify({
         "success": True,
-        "message": "Password correct"
+        "code": code
     })
 
 
 @app.route("/stats", methods=["GET"])
 def stats():
-    """Kitne files registered hain (optional)"""
     key = request.args.get("key")
     if key != ADMIN_KEY:
         return jsonify({"error": "Unauthorized"}), 403
@@ -107,10 +128,9 @@ def stats():
         "total_files": len(FILES_DB),
         "files": [
             {
-                "file_id": fid,
+                "file_id": fid[:8] + "...",
                 "original_name": info["original_name"],
-                "runs": info["runs"],
-                "created_at": info["created_at"]
+                "runs": info["runs"]
             }
             for fid, info in FILES_DB.items()
         ]
