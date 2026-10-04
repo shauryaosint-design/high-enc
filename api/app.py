@@ -3,7 +3,7 @@ Render pe deploy karne wali API
 -------------------------------
 Environment Variables (Render Dashboard se set karo):
 
-ENCODER_SECRET = shibu123_change_this_to_strong_secret_please
+ENCODER_SECRET = shibu123
 ADMIN_KEY      = koi_strong_admin_key_rakho
 """
 
@@ -16,9 +16,8 @@ from functools import wraps
 app = Flask(__name__)
 
 # ========== Environment Variables ==========
-ENCODER_SECRET = os.environ.get("ENCODER_SECRET", "shibu123_change_this_to_strong_secret_please")
-ADMIN_KEY = os.environ.get("ADMIN_KEY", "admin_change_me")
-
+ENCODER_SECRET = shibu123
+ADMIN_KEY = shibu123@
 # Simple in-memory storage (Render free tier pe restart hone pe data urrega)
 # Production mein PostgreSQL / Redis use karna better hai
 # Format: { file_id: { "password_hash": "...", "original_name": "...", "created_at": 123 } }
