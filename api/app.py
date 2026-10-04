@@ -19,8 +19,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 app = Flask(__name__)
 
 ENCODER_SECRET = "SHAURYA"
-ADMIN_KEY = "SHIBU"
-
+ADMIN_KEY = "shibu"
 # { file_id: {password_hash, salt, encrypted, original_name, created_at, runs} }
 FILES_DB = {}
 
