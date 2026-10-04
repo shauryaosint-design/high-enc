@@ -20,6 +20,7 @@ app = Flask(__name__)
 
 ENCODER_SECRET = "SHAURYA"
 ADMIN_KEY = "shibu"
+
 # { file_id: {password_hash, salt, encrypted, original_name, created_at, runs} }
 FILES_DB = {}
 
@@ -40,25 +41,37 @@ def derive_key(password: str, salt: bytes) -> bytes:
 
 def safe_execute(code: str, inputs: list) -> tuple[bool, str]:
     """
-    Code ko safely chalata hai.
+    Code ko server pe chalata hai.
     input() ko pre-loaded values se replace karta hai.
     print() ka output capture karta hai.
+    OSINT tool ke liye zaroori modules allow kiye gaye hain.
     """
+    import json as _json
+    import re as _re
+    import time as _time
+    import base64 as _base64
+    import urllib.request as _urllib_request
+    import urllib.error as _urllib_error
+    from datetime import datetime as _datetime
+
     input_iter = iter(inputs)
 
     def fake_input(prompt=""):
         try:
             value = next(input_iter)
-            # prompt ko bhi output mein dikhao taaki natural lage
-            print(prompt + value)
+            print(prompt + str(value))
             return value
         except StopIteration:
             return ""
 
-    # Restricted builtins (thoda safe)
+    # File save ko soft disable (Render pe file user ko nahi milti)
+    def fake_open(*args, **kwargs):
+        raise PermissionError("File saving is disabled on server. Use option [3] to print Base64 instead.")
+
     safe_builtins = {
         "print": print,
         "input": fake_input,
+        "open": fake_open,
         "range": range,
         "len": len,
         "str": str,
@@ -84,6 +97,23 @@ def safe_execute(code: str, inputs: list) -> tuple[bool, str]:
         "True": True,
         "False": False,
         "None": None,
+        "Exception": Exception,
+        "__import__": __import__,
+    }
+
+    # Modules jo script use karti hai
+    safe_globals = {
+        "__builtins__": safe_builtins,
+        "sys": sys,
+        "json": _json,
+        "re": _re,
+        "time": _time,
+        "base64": _base64,
+        "datetime": type("datetime", (), {"datetime": _datetime})(),
+        "urllib": type("urllib", (), {
+            "request": _urllib_request,
+            "error": _urllib_error
+        })(),
     }
 
     stdout_capture = io.StringIO()
@@ -91,7 +121,7 @@ def safe_execute(code: str, inputs: list) -> tuple[bool, str]:
 
     try:
         with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
-            exec(code, {"__builtins__": safe_builtins}, {})
+            exec(code, safe_globals, {})
         output = stdout_capture.getvalue()
         errors = stderr_capture.getvalue()
         if errors:
